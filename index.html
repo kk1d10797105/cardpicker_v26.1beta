@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>cardpicker</title>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<style>
+body { margin:0; font-family:Arial,sans-serif; text-align:center; background:#a0e9ff; min-height:100vh;}
+.hidden{display:none;}
+button{padding:15px 25px;font-size:18px;background-color:#FFD54F;border:none;border-radius:10px;cursor:pointer;}
+#home{margin-top:100px;}
+#cards{margin-top:40px;}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:15px;padding:20px;}
+.card{background:#ff4d4d;height:100px;border-radius:10px;}
+.selected{width:200px;height:120px;margin:40px auto;display:flex;align-items:center;justify-content:center;flex-direction:column;color:white;font-weight:bold;}
+.card.selected{transition:all 0.5s ease;}
+.fade-in{opacity:0;transition:opacity 3s ease;}
+.fade-in.show{opacity:1;}
+#cardContent{text-align:center;}
+</style>
+
+<meta name="robots" content="noindex,nofollow">
+
+</head>
+
+<body>
+
+<div id="home">
+  <h1>cardpicker</h1>
+  <button id="startBtn">pick</button>
+  <br><br>
+  <button id="adminBtn">Manager mode</button>
+</div>
+
+<div id="cards" class="hidden">
+  <h2>Pick your card!</h2>
+  <div class="grid" id="cardGrid"></div>
+</div>
+
+<div id="resultScreen" class="hidden">
+  <div id="selectedCard" class="card selected">
+    <div id="cardContent"></div>
+  </div>
+  <button id="flipBtn">see result</button>
+</div>
+
+<div id="adminLogin" class="hidden">
+  <input type="password" id="passwordInput" placeholder="passcode">
+  <button id="loginBtn">login</button>
+</div>
+
+<div id="adminScreen" class="hidden">
+  <p style="color:red;font-weight:bold;">
+    At least two results are required.<br>
+    Please ensure that the total of the probabilities adds up to 100.<br>
+    Once you've finished editing, click the Save button and then reload the page.
+  </p>
+
+  <div>
+    <label>Top title</label><br>
+    <input id="titleInput" placeholder="card picker"><br><br>
+    <label>Start button title</label><br>
+    <input id="startBtnInput" placeholder="pick"><br><br>
+  </div>
+
+  <div id="fortuneList"></div>
+  <button id="addRowBtn">＋add</button>
+  <button id="saveBtn">save</button>
+</div>
+
+<script>
+// ========================
+// Firebase初期化（あなたの設定をここに1つだけまとめました）
+// ========================
+const firebaseConfig = {
+  apiKey: "AIzaSyBfe305wQJxiul4BLIOKdnmF6_3qY5VZJw",
+  authDomain: "cardpickersoft-beta.firebaseapp.com",
+  projectId: "cardpickersoft-beta",
+  storageBucket: "cardpickersoft-beta.firebasestorage.app",
+  messagingSenderId: "676912100571",
+  appId: "1:676912100571:web:a8ea2d84ee14331cea08fe"
+};
+
+// 互換モードでの初期化
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const docRef = db.collection("cardpickerbeta").doc("ZKfcwa8h4fwzw5z4ypcs");
+
+// ========================
+// 要素
+// ========================
+const home = document.getElementById("home");
+const cards = document.getElementById("cards");
+const resultScreen = document.getElementById("resultScreen");
+const cardGrid = document.getElementById("cardGrid");
+const selectedCard = document.getElementById("selectedCard");
+const cardContent = document.getElementById("cardContent");
+const flipBtn = document.getElementById("flipBtn");
+const startBtn = document.getElementById("startBtn");
+
+const adminBtn = document.getElementById("adminBtn");
+const adminLogin = document.getElementById("adminLogin");
+const passwordInput = document.getElementById("passwordInput");
+const loginBtn = document.getElementById("loginBtn");
+const adminScreen = document.getElementById("adminScreen");
+const fortuneList = document.getElementById("fortuneList");
+const addRowBtn = document.getElementById("addRowBtn");
+const saveBtn = document.getElementById("saveBtn");
+
+let fortunes = [];
+
+// ========================
+// 初期ロード
+window.onload = async () => {
+  try {
+    const doc = await docRef.get();
+    if(doc.exists){
+      const data = doc.data();
+      fortunes = data.fortunes || [];
+      document.querySelector("#home h1").textContent = data.titleText || "cardpicker";
+      document.getElementById("startBtn").textContent = data.startBtnText || "pick";
+    } else {
+      // 初期データがない場合のデフォルト
+      fortunes = [
+        { title: "output 1", comment: "message 1", prob: 20 },
+        { title: "output 2", comment: "message 2", prob: 20 },
+        { title: "output 3", comment: "message 3", prob: 20 },
+        { title: "output 4", comment: "message 4", prob: 20 },
+        { title: "output 5", comment: "message 5", prob: 20 }
+      ];
+    }
+  } catch(e){ console.error("An error occured from Firebase", e);}
+};
+
+// ========================
+// 画面遷移
+startBtn.onclick = ()=>{ home.classList.add("hidden"); cards.classList.remove("hidden"); }
+if(adminBtn){ adminBtn.onclick = ()=>{ home.classList.add("hidden"); adminLogin.classList.remove("hidden"); }}
+
+// ========================
+// カード生成
+for(let i=0;i<12;i++){
+  const card = document.createElement("div");
+  card.className="card";
+  card.onclick=()=>{
+    selectedCard.classList.add("selected");
+    cardContent.classList.add("fade-in");
+    cards.classList.add("hidden");
+    resultScreen.classList.remove("hidden");
+  };
+  cardGrid.appendChild(card);
+}
+
+// ========================
+// 抽選
+function getRandomFortune(){
+  let total=0;
+  fortunes.forEach(f=>total+=Number(f.prob));
+  let rand=Math.random()*total;
+  for(let f of fortunes){
+    if(rand<f.prob) return f;
+    rand-=f.prob;
+  }
+}
+
+// ========================
+// めくるボタン
+flipBtn.onclick=()=>{
+  flipBtn.disabled=true;
+  cardContent.textContent="loading...";
+  cardContent.classList.remove("show");
+
+  setTimeout(()=>{
+    const random=getRandomFortune();
+    if(random) {
+      cardContent.innerHTML=`<div style="font-size:24px;">${random.title}</div><div style="font-size:14px;">${random.comment}</div>`;
+    } else {
+      cardContent.textContent="error：no results found";
+    }
+    requestAnimationFrame(()=>{ cardContent.classList.add("show"); });
+  },500);
+
+  // 1分間再試行不可（デバッグ中は短くしてもいいかもしれません）
+  setTimeout(()=>{ flipBtn.disabled=false; }, 60000);
+}
+
+// ========================
+// 管理者ログイン
+const correctPassword="cf5hj972";
+loginBtn.onclick=()=>{
+  if(passwordInput.value===correctPassword){
+    adminLogin.classList.add("hidden");
+    adminScreen.classList.remove("hidden");
+    loadAdminData();
+  } else{ alert("passcode incorrect"); }
+}
+
+// ========================
+// 管理画面
+function createRow(data={title:"",comment:"",prob:0}){
+  const row=document.createElement("div");
+  row.innerHTML=`
+    <input class="title" value="${data.title}" placeholder="result">
+    <input class="comment" value="${data.comment}" placeholder="message">
+    <input class="prob" type="number" value="${data.prob}" placeholder="probability">
+    <button class="deleteBtn">delete</button><br><br>
+  `;
+  row.querySelector(".deleteBtn").onclick=()=>row.remove();
+  return row;
+}
+
+function loadAdminData(){
+  fortuneList.innerHTML="";
+  fortunes.forEach(f=>fortuneList.appendChild(createRow(f)));
+  document.getElementById("titleInput").value=document.querySelector("#home h1").textContent;
+  document.getElementById("startBtnInput").value=document.getElementById("startBtn").textContent;
+}
+
+addRowBtn.onclick=()=>{ fortuneList.appendChild(createRow()); }
+
+saveBtn.onclick=async ()=>{
+  const rows=document.querySelectorAll("#fortuneList > div");
+  const data=[];
+  let totalProb=0;
+  rows.forEach(row=>{
+    const title=row.querySelector(".title").value;
+    const comment=row.querySelector(".comment").value;
+    const prob=Number(row.querySelector(".prob").value);
+    if(title && prob>=0){ data.push({title,comment,prob}); totalProb+=prob; }
+  });
+
+  if(data.length<2){ alert("At least two results are required."); return; }
+  if(totalProb!==100){ alert("Please ensure that the total of the probabilities adds up to 100. Current total: " + totalProb); return; }
+
+  const titleText=document.getElementById("titleInput").value;
+  const startBtnText=document.getElementById("startBtnInput").value;
+
+  try{
+    await docRef.set({ fortunes:data, titleText, startBtnText });
+    fortunes=data;
+    alert("Changes saved!");
+  }catch(e){ console.error(e); alert("Failed to save changes."); }
+}
+</script>
+
+</body>
+</html>
