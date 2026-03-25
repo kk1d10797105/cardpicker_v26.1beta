@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
 <title>cardpicker</title>
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -12,26 +13,24 @@
 body { margin:0; font-family:Arial,sans-serif; text-align:center; background:#a0e9ff; min-height:100vh;}
 .hidden{display:none;}
 button{padding:15px 25px;font-size:18px;background-color:#FFD54F;border:none;border-radius:10px;cursor:pointer;}
+button:disabled { background-color: #ccc; cursor: not-allowed; }
 #home{margin-top:100px;}
 #cards{margin-top:40px;}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:15px;padding:20px;}
-.card{background:#ff4d4d;height:100px;border-radius:10px;}
+.card{background:#ff4d4d;height:100px;border-radius:10px;cursor:pointer;}
 .selected{width:200px;height:120px;margin:40px auto;display:flex;align-items:center;justify-content:center;flex-direction:column;color:white;font-weight:bold;}
 .card.selected{transition:all 0.5s ease;}
 .fade-in{opacity:0;transition:opacity 3s ease;}
 .fade-in.show{opacity:1;}
 #cardContent{text-align:center;}
 </style>
-
-<meta name="robots" content="noindex,nofollow">
-
 </head>
 
 <body>
 
 <div id="home">
   <h1>cardpicker</h1>
-  <button id="startBtn">pick</button>
+  <button id="startBtn" disabled>loading...</button>
   <br><br>
   <button id="adminBtn">Manager mode</button>
 </div>
@@ -57,13 +56,13 @@ button{padding:15px 25px;font-size:18px;background-color:#FFD54F;border:none;bor
   <p style="color:red;font-weight:bold;">
     At least two results are required.<br>
     Please ensure that the total of the probabilities adds up to 100.<br>
-    Once you've finished editing, click the Save button and then reload the page.
+    Once finished, click Save and reload.
   </p>
 
   <div>
     <label>Top title</label><br>
-    <input id="titleInput" placeholder="card picker"><br><br>
-    <label>Start button title</label><br>
+    <input id="titleInput" placeholder="cardpicker"><br><br>
+    <label>Start button message</label><br>
     <input id="startBtnInput" placeholder="pick"><br><br>
   </div>
 
@@ -74,7 +73,7 @@ button{padding:15px 25px;font-size:18px;background-color:#FFD54F;border:none;bor
 
 <script>
 // ========================
-// Firebase初期化（あなたの設定をここに1つだけまとめました）
+// Firebase初期化
 // ========================
 const firebaseConfig = {
   apiKey: "AIzaSyBfe305wQJxiul4BLIOKdnmF6_3qY5VZJw",
@@ -85,7 +84,6 @@ const firebaseConfig = {
   appId: "1:676912100571:web:a8ea2d84ee14331cea08fe"
 };
 
-// 互換モードでの初期化
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const docRef = db.collection("cardpickerbeta").doc("ZKfcwa8h4fwzw5z4ypcs");
@@ -114,7 +112,8 @@ const saveBtn = document.getElementById("saveBtn");
 let fortunes = [];
 
 // ========================
-// 初期ロード
+// 初期ロード（ここが重要！）
+// ========================
 window.onload = async () => {
   try {
     const doc = await docRef.get();
@@ -122,33 +121,50 @@ window.onload = async () => {
       const data = doc.data();
       fortunes = data.fortunes || [];
       document.querySelector("#home h1").textContent = data.titleText || "cardpicker";
-      document.getElementById("startBtn").textContent = data.startBtnText || "pick";
+      startBtn.textContent = data.startBtnText || "pick";
     } else {
-      // 初期データがない場合のデフォルト
-      fortunes = [
+      // データがない場合のデフォルト
+      fortunes = [        
         { title: "output 1", comment: "message 1", prob: 20 },
         { title: "output 2", comment: "message 2", prob: 20 },
         { title: "output 3", comment: "message 3", prob: 20 },
         { title: "output 4", comment: "message 4", prob: 20 },
         { title: "output 5", comment: "message 5", prob: 20 }
       ];
+      startBtn.textContent = "pick";
     }
-  } catch(e){ console.error("An error occured from Firebase", e);}
+  } catch(e){ 
+    console.error("Firebase Error:", e);
+    // オフライン時などのフォールバック
+    fortunes = [{ title: "Error", comment: "Please check internet connection", prob: 100 }];
+    startBtn.textContent = "pick (offline)";
+  } finally {
+    // 成功しても失敗しても、読み込みが終わったらボタンを有効化する
+    startBtn.disabled = false;
+  }
 };
 
 // ========================
 // 画面遷移
-startBtn.onclick = ()=>{ home.classList.add("hidden"); cards.classList.remove("hidden"); }
-if(adminBtn){ adminBtn.onclick = ()=>{ home.classList.add("hidden"); adminLogin.classList.remove("hidden"); }}
+// ========================
+startBtn.onclick = ()=>{ 
+  home.classList.add("hidden"); 
+  cards.classList.remove("hidden"); 
+}
+if(adminBtn){ 
+  adminBtn.onclick = ()=>{ 
+    home.classList.add("hidden"); 
+    adminLogin.classList.remove("hidden"); 
+  }
+}
 
 // ========================
-// カード生成
+// カード生成（12枚）
+// ========================
 for(let i=0;i<12;i++){
   const card = document.createElement("div");
   card.className="card";
   card.onclick=()=>{
-    selectedCard.classList.add("selected");
-    cardContent.classList.add("fade-in");
     cards.classList.add("hidden");
     resultScreen.classList.remove("hidden");
   };
@@ -156,40 +172,47 @@ for(let i=0;i<12;i++){
 }
 
 // ========================
-// 抽選
+// 抽選ロジック（安全版）
+// ========================
 function getRandomFortune(){
+  if (fortunes.length === 0) return null;
+  
   let total=0;
   fortunes.forEach(f=>total+=Number(f.prob));
+  
   let rand=Math.random()*total;
   for(let f of fortunes){
     if(rand<f.prob) return f;
     rand-=f.prob;
   }
+  return fortunes[0];
 }
 
 // ========================
-// めくるボタン
+// 結果表示（めくる）
+// ========================
 flipBtn.onclick=()=>{
   flipBtn.disabled=true;
-  cardContent.textContent="loading...";
+  cardContent.textContent="Picking...";
   cardContent.classList.remove("show");
 
   setTimeout(()=>{
-    const random=getRandomFortune();
+    const random = getRandomFortune();
     if(random) {
       cardContent.innerHTML=`<div style="font-size:24px;">${random.title}</div><div style="font-size:14px;">${random.comment}</div>`;
     } else {
-      cardContent.textContent="error：no results found";
+      cardContent.textContent="error: no data found";
     }
     requestAnimationFrame(()=>{ cardContent.classList.add("show"); });
-  },500);
+  },2000);
 
-  // 1分間再試行不可（デバッグ中は短くしてもいいかもしれません）
+  // 1分間のクールタイム（文化祭運用に合わせて調整してください）
   setTimeout(()=>{ flipBtn.disabled=false; }, 60000);
 }
 
 // ========================
 // 管理者ログイン
+// ========================
 const correctPassword="cf5hj972";
 loginBtn.onclick=()=>{
   if(passwordInput.value===correctPassword){
@@ -201,12 +224,13 @@ loginBtn.onclick=()=>{
 
 // ========================
 // 管理画面
+// ========================
 function createRow(data={title:"",comment:"",prob:0}){
   const row=document.createElement("div");
   row.innerHTML=`
-    <input class="title" value="${data.title}" placeholder="result">
-    <input class="comment" value="${data.comment}" placeholder="message">
-    <input class="prob" type="number" value="${data.prob}" placeholder="probability">
+    <input class="title" value="${data.title}" placeholder="Result">
+    <input class="comment" value="${data.comment}" placeholder="Comment">
+    <input class="prob" type="number" value="${data.prob}" placeholder="%">
     <button class="deleteBtn">delete</button><br><br>
   `;
   row.querySelector(".deleteBtn").onclick=()=>row.remove();
@@ -217,7 +241,7 @@ function loadAdminData(){
   fortuneList.innerHTML="";
   fortunes.forEach(f=>fortuneList.appendChild(createRow(f)));
   document.getElementById("titleInput").value=document.querySelector("#home h1").textContent;
-  document.getElementById("startBtnInput").value=document.getElementById("startBtn").textContent;
+  document.getElementById("startBtnInput").value=startBtn.textContent;
 }
 
 addRowBtn.onclick=()=>{ fortuneList.appendChild(createRow()); }
@@ -226,15 +250,19 @@ saveBtn.onclick=async ()=>{
   const rows=document.querySelectorAll("#fortuneList > div");
   const data=[];
   let totalProb=0;
+  
   rows.forEach(row=>{
     const title=row.querySelector(".title").value;
     const comment=row.querySelector(".comment").value;
     const prob=Number(row.querySelector(".prob").value);
-    if(title && prob>=0){ data.push({title,comment,prob}); totalProb+=prob; }
+    if(title && prob>=0){ 
+      data.push({title,comment,prob}); 
+      totalProb+=prob; 
+    }
   });
 
   if(data.length<2){ alert("At least two results are required."); return; }
-  if(totalProb!==100){ alert("Please ensure that the total of the probabilities adds up to 100. Current total: " + totalProb); return; }
+  if(totalProb!==100){ alert("Total probability must be 100. Current: " + totalProb); return; }
 
   const titleText=document.getElementById("titleInput").value;
   const startBtnText=document.getElementById("startBtnInput").value;
@@ -242,8 +270,11 @@ saveBtn.onclick=async ()=>{
   try{
     await docRef.set({ fortunes:data, titleText, startBtnText });
     fortunes=data;
-    alert("Changes saved!");
-  }catch(e){ console.error(e); alert("Failed to save changes."); }
+    alert("Saved to Firebase!");
+  }catch(e){ 
+    console.error(e); 
+    alert("Failed to save. Check internet connection."); 
+  }
 }
 </script>
 
