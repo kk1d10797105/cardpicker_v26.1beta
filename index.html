@@ -270,7 +270,7 @@ saveBtn.onclick=async ()=>{
   try{
     await docRef.set({ fortunes:data, titleText, startBtnText });
     fortunes=data;
-    alert("Saved to Firebase!");
+    alert("Changes saved");
   }catch(e){ 
     console.error(e); 
     alert("Failed to save. Check internet connection."); 
